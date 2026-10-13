@@ -1,6 +1,6 @@
 # ServiHUB - BackEnd-1
 
-BackEnd-1 do ServiHub: plicação web voltada à gestão rotineira de pequenos prestadores de serviços.
+BackEnd-1 do ServiHub: Aplicação web voltada à gestão rotineira de pequenos prestadores de serviços.
 
 ## Integrantes
 - Breno Masiesque - 25020087
