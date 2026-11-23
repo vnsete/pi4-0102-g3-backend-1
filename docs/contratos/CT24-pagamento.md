@@ -1,38 +1,70 @@
+
 # CT24 pagamento
 
 | Linha | Valor |
 | --- | --- |
 | ID e nome | CT24 pagamento |
-| Fronteira | Banco |
+| Fronteira | Banco de dados |
 | Quem chama | Backend 1 |
-| Quem responde | Banco |
+| Quem responde | MySQL 9.2 |
 | Atende | E9, E10 |
-| Como chamar | Tabela pagamento; chave id; conexão MySQL |
+| Como chamar | Tabela pagamento, via JDBC |
 
-## Entrada e saída
+## Estrutura da tabela
 
-Os campos gravados são os mesmos campos lidos.
-
-| Campo | Tipo | Obrigatório | Exemplo |
+| Campo | Tipo SQL | Restrição | Descrição |
 | --- | --- | --- | --- |
-| id | inteiro | sim | 50 |
-| servico_id | inteiro | sim | 20 |
-| valor | decimal | sim | 150.00 |
-| situacao | um de: pendente, pago | sim | pendente |
-| pago_em | data e hora | não | omitido quando pendente; presente quando pago |
-| atualizado_em | data e hora | sim | 2026-10-13T09:05:00-03:00 |
+| id | BIGINT | PRIMARY KEY, AUTO_INCREMENT | Identificador do pagamento |
+| servico_id | BIGINT | NOT NULL, UNIQUE, FOREIGN KEY | Serviço vinculado |
+| valor | DECIMAL(12,2) | NOT NULL | Valor registrado |
+| situacao | VARCHAR(20) | NOT NULL | Situação do pagamento |
+| data_pagamento | DATE | NULL permitido | Data informada para o pagamento |
 
 ## Regras
 
-PK id INT AUTO_INCREMENT. FK servico_id com RESTRICT e UNIQUE. valor DECIMAL(12,2) positivo; situacao ENUM(pendente,pago); pago_em DATETIME(6) opcional; atualizado_em DATETIME(6) UTC. pago_em só pode existir se situacao=pago. Inserir ou atualizar por servico_id de forma atômica; consultas de pendências filtram situacao. O serviço é bloqueado na mesma conexão/transação antes do upsert. pago_em deve estar presente se situacao=pago e ausente se pendente, sem exceção. Índice por situacao e atualizado_em suporta CT18. As tabelas usam mecanismo transacional InnoDB, charset utf8mb4 e conexão com timezone UTC. Consultas usam parâmetros vinculados, sem concatenar valores vindos da tela. Restrições e índices são criados por scripts SQL versionados junto do Backend 1.
+A tabela `pagamento` armazena os registros financeiros associados aos serviços do ServiHUB.
 
-Os campos da entrada e da saída descrevem os registros persistidos/lidos. Em inserções, id e datas geradas são preenchidos pelo banco ou pelo Backend 1; em consultas, o Backend 1 informa filtros e lê somente as colunas necessárias. Colunas obrigatórias são NOT NULL; opcionais aceitam NULL. A conversão entre campos HTTP e colunas segue a visão geral.
+O campo `id` é gerado automaticamente pelo MySQL.
 
-## Erros
+O campo `servico_id` referencia `servico.id` e possui restrição UNIQUE, permitindo apenas um registro de pagamento por serviço.
 
-| Quando | O que volta |
+O campo `valor` é obrigatório e utiliza o tipo DECIMAL(12,2).
+
+O campo `situacao` é armazenado como VARCHAR(20), não como ENUM do MySQL. O Backend 1 aceita exclusivamente os valores `pendente` e `pago` nas operações de registro.
+
+O campo `data_pagamento` é opcional e utiliza o tipo DATE. O Backend 1 grava a data informada na requisição, sem preenchê-la automaticamente quando o pagamento é marcado como pago.
+
+A tabela não possui colunas chamadas `pago_em` ou `atualizado_em`.
+
+O registro manual utiliza `POST /pagamentos`, recebendo `servico_id`, `valor`, `situacao` e, opcionalmente, `data_pagamento`.
+
+O Backend 1 verifica se o serviço existe e valida a situação informada.
+
+O registro ou atualização utiliza `INSERT ... ON DUPLICATE KEY UPDATE`, aproveitando a restrição UNIQUE de `servico_id`.
+
+Caso já exista pagamento para o mesmo serviço, a operação atualiza `valor`, `situacao` e `data_pagamento`.
+
+A aprovação de um orçamento também gera automaticamente um pagamento com situação `pendente`, vinculado ao serviço criado.
+
+A consulta utiliza `GET /pagamentos`, retornando os registros associados à descrição do serviço e ao nome do cliente.
+
+A consulta de pendências utiliza `GET /pendencias`, retornando somente os pagamentos com situação `pendente`.
+
+A tabela é criada pelo script `db/schema.sql` do repositório principal.
+
+## Erros e validações
+
+| Situação | Comportamento |
 | --- | --- |
-| FK inexistente ou referência incompatível | Banco recusa; Backend 1 retorna o erro de vínculo ou não encontrado do contrato HTTP. |
-| Valor, nulidade, enumeração ou unicidade viola a regra da tabela | Banco recusa; Backend 1 retorna 400 ou 409 conforme o contrato HTTP. |
-| Conexão ou transação falha | Rollback; Backend 1 retorna 503 BANCO_INDISPONIVEL. |
+| Serviço inexistente no registro | HTTP 404 — SERVICO_NAO_ENCONTRADO |
+| Situação diferente de pendente ou pago | HTTP 400 — SITUACAO_INVALIDA |
+| Sessão inválida, sem autorização interna | HTTP 401 — SESSAO_INVALIDA |
+| Valor inválido ou exceção durante o processamento | HTTP 400 — REQUISICAO_INVALIDA, conforme tratamento geral atual |
 
+## Persistência
+
+Os dados são armazenados no MySQL e acessados pelo Backend 1 por meio de JDBC.
+
+A definição da tabela está em `db/schema.sql`.
+
+A restrição UNIQUE de `servico_id` evita múltiplos registros de pagamento para o mesmo serviço.
