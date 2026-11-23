@@ -1,42 +1,68 @@
+
 # CT20 endereco
 
 | Linha | Valor |
 | --- | --- |
 | ID e nome | CT20 endereco |
-| Fronteira | Banco |
+| Fronteira | Banco de dados |
 | Quem chama | Backend 1 |
-| Quem responde | Banco |
+| Quem responde | MySQL 9.2 |
 | Atende | E2, E4 |
-| Como chamar | Tabela endereco; chave id; conexão MySQL |
+| Como chamar | Tabela endereco, via JDBC |
 
-## Entrada e saída
+## Estrutura da tabela
 
-Os campos gravados são os mesmos campos lidos.
-
-| Campo | Tipo | Obrigatório | Exemplo |
+| Campo | Tipo SQL | Restrição | Descrição |
 | --- | --- | --- | --- |
-| id | inteiro | sim | 10 |
-| cliente_id | inteiro | sim | 1 |
-| logradouro | texto | sim | Rua das Flores |
-| numero | texto | sim | 120 |
-| complemento | texto | não | Casa 2 |
-| bairro | texto | sim | Centro |
-| cidade | texto | sim | Campinas |
-| uf | texto | sim | SP |
-| cep | texto | sim | 13010000 |
-| criado_em | data e hora | sim | 2026-10-13T09:01:00-03:00 |
+| id | BIGINT | PRIMARY KEY, AUTO_INCREMENT | Identificador do endereço |
+| cliente_id | BIGINT | NOT NULL, FOREIGN KEY | Cliente proprietário do endereço |
+| logradouro | VARCHAR(200) | NOT NULL | Nome da rua ou avenida |
+| numero | VARCHAR(30) | NULL permitido | Número do imóvel |
+| complemento | VARCHAR(120) | NULL permitido | Complemento |
+| bairro | VARCHAR(120) | NULL permitido | Bairro |
+| cidade | VARCHAR(120) | NULL permitido | Cidade |
+| estado | VARCHAR(2) | NULL permitido | Sigla do estado |
+| cep | VARCHAR(12) | NULL permitido | CEP |
 
 ## Regras
 
-PK id INT AUTO_INCREMENT. FK cliente_id para cliente.id. Textos conforme CT3: logradouro/bairro/cidade VARCHAR(120), numero VARCHAR(20), complemento VARCHAR(120) opcional, uf CHAR(2), cep CHAR(8), criado_em DATETIME(6) UTC. FK com RESTRICT; inserir e consultar por cliente_id. As tabelas usam mecanismo transacional InnoDB, charset utf8mb4 e conexão com timezone UTC. Consultas usam parâmetros vinculados, sem concatenar valores vindos da tela. Restrições e índices são criados por scripts SQL versionados junto do Backend 1. O par (id, cliente_id) possui chave única para verificar o proprietário do endereço por FK composta.
+A tabela `endereco` armazena os endereços vinculados aos clientes cadastrados no ServiHUB.
 
-Os campos da entrada e da saída descrevem os registros persistidos/lidos. Em inserções, id e datas geradas são preenchidos pelo banco ou pelo Backend 1; em consultas, o Backend 1 informa filtros e lê somente as colunas necessárias. Colunas obrigatórias são NOT NULL; opcionais aceitam NULL. A conversão entre campos HTTP e colunas segue a visão geral.
+O campo `id` é gerado automaticamente pelo MySQL.
 
-## Erros
+O campo `cliente_id` é uma chave estrangeira que referencia `cliente.id`.
 
-| Quando | O que volta |
+Um cliente pode possuir vários endereços, estabelecendo um relacionamento 1:N entre `cliente` e `endereco`.
+
+Os campos obrigatórios no banco são `cliente_id` e `logradouro`. Os demais campos de endereço permitem valores nulos.
+
+O Backend 1 verifica se o cliente existe antes de cadastrar ou consultar seus endereços.
+
+No cadastro, o Backend 1 exige que o campo `logradouro` não esteja vazio.
+
+O cadastro utiliza `POST /clientes/{id}/enderecos`, com o identificador do cliente informado na rota.
+
+O identificador `cliente_id` é preenchido pelo Backend 1 com base no parâmetro da rota, independentemente de um valor enviado no corpo da requisição.
+
+Após cadastrar o endereço, a API retorna HTTP 201 com o identificador `id` criado.
+
+A consulta utiliza `GET /clientes/{id}/enderecos`, retornando os endereços vinculados ao cliente.
+
+A tabela `servico` pode referenciar um endereço por meio da chave estrangeira `endereco_id`.
+
+A tabela é criada pelo script `db/schema.sql` do repositório principal.
+
+## Erros e validações
+
+| Situação | Comportamento |
 | --- | --- |
-| FK inexistente ou referência incompatível | Banco recusa; Backend 1 retorna o erro de vínculo ou não encontrado do contrato HTTP. |
-| Valor, nulidade, enumeração ou unicidade viola a regra da tabela | Banco recusa; Backend 1 retorna 400 ou 409 conforme o contrato HTTP. |
-| Conexão ou transação falha | Rollback; Backend 1 retorna 503 BANCO_INDISPONIVEL. |
+| Cliente inexistente | HTTP 404 — CLIENTE_NAO_ENCONTRADO |
+| Logradouro vazio | HTTP 400 — LOGRADOURO_OBRIGATORIO |
+| Sessão inválida, sem autorização interna | HTTP 401 — SESSAO_INVALIDA |
+| Falha de persistência ou exceção | HTTP 400 — REQUISICAO_INVALIDA, conforme tratamento geral atual |
 
+## Persistência
+
+Os registros são armazenados no MySQL por meio de JDBC, utilizado pelo Backend 1.
+
+A definição da tabela está no arquivo `db/schema.sql` do repositório principal.
