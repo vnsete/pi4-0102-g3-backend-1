@@ -1,3 +1,4 @@
+
 # CT14 consultarOrcamentos
 
 | Linha | Valor |
@@ -7,59 +8,72 @@
 | Quem chama | Frontend |
 | Quem responde | Backend 1 |
 | Atende | E8 |
-| Como chamar | GET /clientes/{clienteId}/orcamentos |
+| Como chamar | GET /orcamentos |
 
 ## Entrada
 
-| Campo | Tipo | Obrigatório | Exemplo |
-| --- | --- | --- | --- |
-| clienteId | inteiro | sim | 1 |
+Não possui parâmetros obrigatórios nem corpo de requisição.
 
 ## Saída
 
 Sucesso: HTTP 200.
 
-| Campo | Tipo | Obrigatório | Exemplo |
-| --- | --- | --- | --- |
-| orcamentos | lista de objeto Orcamento | sim | ver objeto Orcamento |
+A API retorna diretamente um array JSON de orçamentos.
 
-### Objeto Orcamento
+Cada objeto contém os campos da tabela `orcamento` e o nome do cliente associado.
 
-| Campo | Tipo | Obrigatório | Exemplo |
-| --- | --- | --- | --- |
-| orcamentoId | inteiro | sim | 40 |
-| clienteId | inteiro | sim | 1 |
-| servicoId | inteiro | não | 20 |
-| descricao | texto | sim | Limpeza da piscina e materiais |
-| valorTotal | decimal | sim | 150.00 |
-| criadoEm | data e hora | sim | 2026-10-13T09:04:00-03:00 |
+| Campo | Tipo | Descrição |
+| --- | --- | --- |
+| id | inteiro | Identificador do orçamento |
+| cliente_id | inteiro | Identificador do cliente |
+| catalogo_id | inteiro | Identificador do item do catálogo |
+| servico_id | inteiro ou nulo | Vínculo opcional existente no banco |
+| descricao | texto | Descrição do orçamento |
+| valor | decimal | Valor do orçamento |
+| status | texto | Situação do orçamento |
+| servico_aprovado_id | inteiro ou nulo | Serviço gerado após aprovação |
+| cliente | texto | Nome do cliente |
 
 ## Cabeçalhos de entrada
 
-| Campo | Tipo | Obrigatório | Exemplo |
-| --- | --- | --- | --- |
-| Cookie servihubSessao | texto | sim | 64 caracteres hexadecimais do token |
+| Campo | Tipo | Obrigatório |
+| --- | --- | --- |
+| Cookie | texto | Sim, para autenticação por sessão |
+
+O navegador utiliza o cookie `servihubSessao`.
 
 ## Regras
 
-Confere cliente e retorna seus orçamentos por criadoEm decrescente e orcamentoId decrescente. Cliente sem orçamento retorna lista vazia. Regras de sessão, cabeçalhos, origem, timeout e limites seguem a visão geral. O corpo JSON não contém o token de sessão. Resposta contém Content-Type: application/json e Cache-Control: no-store.
+O endpoint `GET /orcamentos` consulta todos os orçamentos cadastrados, independentemente do cliente.
 
-Padrões de campos, datas, valores, rede e erros seguem docs/fluxos/visao-geral.md no Frontend. Campo recebido fora do contrato é rejeitado com 400 DADOS_INVALIDOS.
+A consulta utiliza a tabela `orcamento`, associada à tabela `cliente` por meio de `cliente_id`.
+
+O resultado é ordenado pelo identificador do orçamento (`id`) em ordem decrescente.
+
+O endpoint não realiza filtragem por cliente.
+
+Quando não existem orçamentos, retorna um array JSON vazio.
+
+O acesso exige uma sessão válida ou autorização interna, conforme o mecanismo de autenticação do Backend 1.
+
+A resposta possui Content-Type `application/json; charset=utf-8`.
 
 ## Erros
 
 | Quando | O que volta |
 | --- | --- |
-| Cliente não existe | 404 CLIENTE_NAO_ENCONTRADO |
-| Cookie ausente, sessão expirada ou invalidada | 401 SESSAO_INVALIDA |
-| ID, campo obrigatório, tipo ou JSON inválido | 400 DADOS_INVALIDOS |
-| Banco indisponível ou transação falha | 503 BANCO_INDISPONIVEL |
-| Falha inesperada | 500 ERRO_INTERNO |
+| Sessão inválida ou expirada, sem autorização interna | HTTP 401 — SESSAO_INVALIDA |
+| Rota inexistente | HTTP 404 — ROTA_NAO_ENCONTRADA |
+| Exceção durante o processamento | HTTP 400 — REQUISICAO_INVALIDA |
 
-### Objeto Erro
+## Objeto de erro
 
-| Campo | Tipo | Obrigatório | Exemplo |
-| --- | --- | --- | --- |
-| codigo | texto | sim | DADOS_INVALIDOS |
-| mensagem | texto | sim | Confira os campos informados. |
+Os erros utilizam um objeto JSON com o campo `erro`.
 
+Exemplo:
+
+```json
+{
+  "erro": "SESSAO_INVALIDA"
+}
+```
