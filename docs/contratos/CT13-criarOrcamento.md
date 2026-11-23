@@ -1,3 +1,4 @@
+
 # CT13 criarOrcamento
 
 | Linha | Valor |
@@ -17,7 +18,6 @@
 | catalogo_id | inteiro | sim | 20 |
 | valor | decimal | não | 150.00 |
 
-
 ## Saída
 
 Sucesso: HTTP 201.
@@ -26,42 +26,53 @@ Sucesso: HTTP 201.
 | --- | --- | --- | --- |
 | id | inteiro | sim | 40 |
 
+A resposta é um objeto JSON contendo o identificador do orçamento criado.
+
 ## Cabeçalhos de entrada
 
 | Campo | Tipo | Obrigatório | Exemplo |
 | --- | --- | --- | --- |
-| Cookie servihubSessao | texto | sim | 64 caracteres hexadecimais do token |
-| Origin | texto | sim | https://servihub.example.com |
-| Content-Type | texto | sim | application/json |
+| Cookie | texto | sim | servihubSessao=token |
+| Content-Type | texto | recomendado | application/json |
+
+O token de sessão é enviado pelo navegador no cookie e não no corpo JSON.
 
 ## Regras
 
+O cliente informado em `cliente_id` deve existir no banco de dados.
 
-O cliente informado em cliente_id deve existir. O item informado em catalogo_id deve estar cadastrado no catálogo. A descrição do orçamento é obtida automaticamente do catálogo. O campo valor é opcional; quando não informado, utiliza-se o valor cadastrado no catálogo. Valores negativos são rejeitados com HTTP 400 VALOR_INVALIDO. Após a criação, o Backend 1 retorna HTTP 201 com o identificador id do orçamento gerado.
+O item informado em `catalogo_id` deve existir na tabela `catalogo`.
 
+A descrição do orçamento é obtida automaticamente do item do catálogo selecionado.
 
-Padrões de campos, datas, valores, rede e erros seguem docs/fluxos/visao-geral.md no Frontend. Campo recebido fora do contrato é rejeitado com 400 DADOS_INVALIDOS.
+O campo `valor` é opcional. Quando não informado ou enviado em branco, o Backend 1 utiliza o valor cadastrado no catálogo.
+
+Valores negativos são rejeitados com HTTP 400 e código `VALOR_INVALIDO`. O código permite valor igual a zero.
+
+Após a criação, o Backend 1 registra o orçamento no banco e retorna HTTP 201 com o identificador `id`.
+
+A aprovação do orçamento é uma operação separada, realizada por `PUT /orcamentos/{id}/aprovar`. Quando aprovado, o sistema cria o serviço e o pagamento pendente, vinculados ao orçamento.
+
+O endpoint exige uma sessão válida, identificada pelo cookie `servihubSessao`, ou autorização por chave interna conforme a implementação do Backend 1.
 
 ## Erros
 
 | Quando | O que volta |
 | --- | --- |
-| Cliente não existe | 404 CLIENTE_NAO_ENCONTRADO |
-| Serviço não existe | 404 SERVICO_NAO_ENCONTRADO |
-| Serviço pertence a outro cliente | 409 VINCULO_INVALIDO |
-| Descrição ou valor inválidos | 400 DADOS_INVALIDOS |
-| Cookie ausente, sessão expirada ou invalidada | 401 SESSAO_INVALIDA |
-| Origem ausente ou não autorizada | 403 ORIGEM_NAO_AUTORIZADA |
-| Corpo maior que 64 KiB | 413 CORPO_MUITO_GRANDE |
-| Tipo de conteúdo diferente de application/json | 415 TIPO_DE_CONTEUDO_INVALIDO |
-| ID, campo obrigatório, tipo ou JSON inválido | 400 DADOS_INVALIDOS |
-| Banco indisponível ou transação falha | 503 BANCO_INDISPONIVEL |
-| Falha inesperada | 500 ERRO_INTERNO |
+| Cliente não existe | HTTP 404 — CLIENTE_NAO_ENCONTRADO |
+| Item do catálogo não existe | HTTP 404 — SERVICO_DO_CATALOGO_NAO_ENCONTRADO |
+| Valor negativo | HTTP 400 — VALOR_INVALIDO |
+| Sessão inválida ou expirada, sem autorização interna | HTTP 401 — SESSAO_INVALIDA |
+| Dados inválidos ou exceção durante o processamento | HTTP 400 — REQUISICAO_INVALIDA |
 
-### Objeto Erro
+## Objeto de erro
 
-| Campo | Tipo | Obrigatório | Exemplo |
-| --- | --- | --- | --- |
-| codigo | texto | sim | DADOS_INVALIDOS |
-| mensagem | texto | sim | Confira os campos informados. |
+A implementação retorna os erros em formato JSON:
 
+```json
+{
+  "erro": "CLIENTE_NAO_ENCONTRADO"
+}
+```
+
+O campo `erro` contém o código correspondente à falha.
