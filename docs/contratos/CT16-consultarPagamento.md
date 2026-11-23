@@ -1,3 +1,4 @@
+
 # CT16 consultarPagamento
 
 | Linha | Valor |
@@ -7,54 +8,68 @@
 | Quem chama | Frontend |
 | Quem responde | Backend 1 |
 | Atende | E9 |
-| Como chamar | GET /servicos/{servicoId}/pagamento |
+| Como chamar | GET /pagamentos |
 
 ## Entrada
 
-| Campo | Tipo | Obrigatório | Exemplo |
-| --- | --- | --- | --- |
-| servicoId | inteiro | sim | 20 |
+Não possui parâmetros obrigatórios nem corpo de requisição.
 
 ## Saída
 
 Sucesso: HTTP 200.
 
-| Campo | Tipo | Obrigatório | Exemplo |
-| --- | --- | --- | --- |
-| pagamentoId | inteiro | sim | 50 |
-| servicoId | inteiro | sim | 20 |
-| valor | decimal | sim | 150.00 |
-| situacao | um de: pendente, pago | sim | pendente |
-| pagoEm | data e hora | não | omitido quando pendente; presente quando pago |
-| atualizadoEm | data e hora | sim | 2026-10-13T09:05:00-03:00 |
+A API retorna um array JSON contendo os pagamentos cadastrados.
+
+| Campo | Tipo | Descrição |
+| --- | --- | --- |
+| id | inteiro | Identificador do pagamento |
+| servico_id | inteiro | Identificador do serviço |
+| valor | decimal | Valor registrado |
+| situacao | texto | pendente ou pago |
+| data_pagamento | data ou nulo | Data informada no pagamento |
+| descricao | texto | Descrição do serviço |
+| cliente | texto | Nome do cliente |
 
 ## Cabeçalhos de entrada
 
-| Campo | Tipo | Obrigatório | Exemplo |
-| --- | --- | --- | --- |
-| Cookie servihubSessao | texto | sim | 64 caracteres hexadecimais do token |
+| Campo | Tipo | Obrigatório |
+| --- | --- | --- |
+| Cookie | texto | Sim, para autenticação por sessão |
+
+O navegador utiliza o cookie `servihubSessao`.
 
 ## Regras
 
-Retorna o único registro manual de pagamento do serviço. Um serviço sem registro não é tratado como pago ou pendente automaticamente. Regras de sessão, cabeçalhos, origem, timeout e limites seguem a visão geral. O corpo JSON não contém o token de sessão. Resposta contém Content-Type: application/json e Cache-Control: no-store.
+O endpoint `GET /pagamentos` consulta todos os pagamentos cadastrados no banco de dados.
 
-Padrões de campos, datas, valores, rede e erros seguem docs/fluxos/visao-geral.md no Frontend. Campo recebido fora do contrato é rejeitado com 400 DADOS_INVALIDOS.
+A consulta utiliza a tabela `pagamento`, associada às tabelas `servico` e `cliente`.
+
+O resultado inclui a descrição do serviço e o nome do cliente associado.
+
+Não existe filtro obrigatório por identificador de serviço.
+
+Quando não existem pagamentos cadastrados, a API retorna um array JSON vazio.
+
+O acesso exige sessão válida ou autorização interna, conforme o mecanismo de autenticação do Backend 1.
+
+A resposta utiliza Content-Type `application/json; charset=utf-8`.
 
 ## Erros
 
 | Quando | O que volta |
 | --- | --- |
-| Serviço não existe | 404 SERVICO_NAO_ENCONTRADO |
-| Serviço existe, mas não tem pagamento registrado | 404 PAGAMENTO_NAO_ENCONTRADO |
-| Cookie ausente, sessão expirada ou invalidada | 401 SESSAO_INVALIDA |
-| ID, campo obrigatório, tipo ou JSON inválido | 400 DADOS_INVALIDOS |
-| Banco indisponível ou transação falha | 503 BANCO_INDISPONIVEL |
-| Falha inesperada | 500 ERRO_INTERNO |
+| Sessão inválida ou expirada, sem autorização interna | HTTP 401 — SESSAO_INVALIDA |
+| Rota inexistente | HTTP 404 — ROTA_NAO_ENCONTRADA |
+| Exceção durante o processamento | HTTP 400 — REQUISICAO_INVALIDA |
 
-### Objeto Erro
+## Objeto de erro
 
-| Campo | Tipo | Obrigatório | Exemplo |
-| --- | --- | --- | --- |
-| codigo | texto | sim | DADOS_INVALIDOS |
-| mensagem | texto | sim | Confira os campos informados. |
+Os erros retornam um objeto JSON com o campo `erro`.
 
+Exemplo:
+
+```json
+{
+  "erro": "SESSAO_INVALIDA"
+}
+```
