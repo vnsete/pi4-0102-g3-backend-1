@@ -13,10 +13,10 @@
 
 | Campo | Tipo | Obrigatório | Exemplo |
 | --- | --- | --- | --- |
-| clienteId | inteiro | sim | 1 |
-| servicoId | inteiro | não | 20 |
-| descricao | texto | sim | Limpeza da piscina e materiais |
-| valorTotal | decimal | sim | 150.00 |
+| cliente_id | inteiro | sim | 1 |
+| catalogo_id | inteiro | sim | 20 |
+| valor | decimal | não | 150.00 |
+
 
 ## Saída
 
