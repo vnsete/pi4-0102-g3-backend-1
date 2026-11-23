@@ -1,3 +1,4 @@
+
 # CT25 autenticarPrestador
 
 | Linha | Valor |
@@ -13,8 +14,10 @@
 
 | Campo | Tipo | Obrigatório | Exemplo |
 | --- | --- | --- | --- |
-| email | texto | sim | prestador@example.com |
-| senha | texto | sim | SenhaDoPrestador123! |
+| email | texto | sim | admin@servihub.local |
+| senha | texto | sim | SenhaExemplo123 |
+
+Os dados são enviados no corpo da requisição em formato JSON.
 
 ## Saída
 
@@ -24,44 +27,87 @@ Sucesso: HTTP 200.
 | --- | --- | --- | --- |
 | autenticado | booleano | sim | true |
 | contaId | inteiro | sim | 1 |
-| expiraEm | data e hora | sim | 2026-10-13T18:30:00-03:00 |
+| expiraEm | texto (ISO 8601) | sim | 2026-11-23T18:30:00Z |
+
+A resposta contém o estado da autenticação, o identificador da conta e a data de expiração da sessão.
 
 ## Cabeçalhos de entrada
 
-| Campo | Tipo | Obrigatório | Exemplo |
-| --- | --- | --- | --- |
-| Origin | texto | sim | https://servihub.example.com |
-| Content-Type | texto | sim | application/json |
+| Campo | Tipo | Obrigatório |
+| --- | --- | --- |
+| Content-Type | texto | Recomendado: application/json |
 
 ## Cabeçalhos de saída
 
-| Campo | Tipo | Obrigatório | Exemplo |
-| --- | --- | --- | --- |
-| Set-Cookie | texto | sim | servihubSessao=<token>; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=1800 |
+| Campo | Tipo | Descrição |
+| --- | --- | --- |
+| Set-Cookie | texto | Cookie de autenticação |
+| Content-Type | texto | application/json; charset=utf-8 |
+
+Formato do cookie gerado:
+
+`servihubSessao=<token>; HttpOnly; SameSite=Strict; Path=/; Max-Age=1800`
+
+O atributo Secure não é definido explicitamente na implementação atual.
 
 ## Regras
 
-E-mail: até 254 caracteres, normalizado com trim e minúsculas. Senha: 12 a 128 caracteres, sem alterar espaços ou caixa. Uma conta do prestador é provisionada na configuração do Backend 1; não há cadastro público de contas. O hash usa Argon2id com salt aleatório e parâmetros mínimos m=19456 KiB, t=2, p=1. A senha e o hash nunca são registrados em logs nem retornados pela API. Após validar credenciais, gera token opaco aleatório de 32 bytes, em 64 caracteres hexadecimais, associa contaId e validade de 30 minutos em memória do Backend 1 e devolve o cookie. O JSON contém somente autenticado, contaId e expiraEm. Login substitui e invalida uma sessão anterior apresentada no mesmo navegador. Cinco tentativas inválidas por IP em cinco minutos bloqueiam novos logins nesse IP por cinco minutos. Exemplos são fictícios e não são credenciais provisionadas. Regras de sessão, cabeçalhos, origem, timeout e limites seguem a visão geral. O corpo JSON não contém o token de sessão. Resposta contém Content-Type: application/json e Cache-Control: no-store.
+O endpoint `POST /sessao` realiza a autenticação do prestador utilizando e-mail e senha.
 
-Padrões de campos, datas, valores, rede e erros seguem docs/fluxos/visao-geral.md no Frontend. Campo recebido fora do contrato é rejeitado com 400 DADOS_INVALIDOS.
+As credenciais iniciais são configuradas pelas variáveis de ambiente `ADMIN_EMAIL` e `ADMIN_PASSWORD`.
+
+Na inicialização do Backend 1, caso a conta configurada ainda não exista, o sistema cria seu registro na tabela `conta`.
+
+A senha é armazenada como hash gerado pela biblioteca Argon2. Na criação da conta, o código utiliza os parâmetros de hash `3, 65536, 1`.
+
+Na autenticação, o Backend 1 procura a conta pelo e-mail informado e verifica a senha utilizando `Argon2.verify()`.
+
+O e-mail informado é tratado com remoção de espaços nas extremidades, mas não há conversão explícita para letras minúsculas.
+
+A senha também é lida com remoção de espaços nas extremidades, conforme o método `s()` utilizado no código.
+
+Quando as credenciais são válidas, o Backend 1 gera um token utilizando `UUID.randomUUID()`.
+
+O token é armazenado em memória no Backend 1, associado ao instante de expiração da sessão.
+
+A sessão possui validade de 1800 segundos, equivalentes a 30 minutos.
+
+O navegador recebe o token pelo cookie `servihubSessao`, configurado com os atributos `HttpOnly`, `SameSite=Strict`, `Path=/` e `Max-Age=1800`.
+
+O token não é incluído no corpo JSON da resposta.
+
+A implementação atual não possui limitação de tentativas de login por IP.
+
+Também não invalida automaticamente sessões anteriores quando um novo login é realizado.
+
+A validação das sessões é realizada pelo Backend 1. O encerramento utiliza `DELETE /sessao`, conforme CT27.
 
 ## Erros
 
 | Quando | O que volta |
 | --- | --- |
-| E-mail ou senha não conferem | 401 CREDENCIAIS_INVALIDAS |
-| Mais tentativas que o limite | 429 LIMITE_DE_TENTATIVAS |
-| Conta não foi configurada no ambiente | 503 AUTENTICACAO_INDISPONIVEL |
-| Origem ausente ou não autorizada | 403 ORIGEM_NAO_AUTORIZADA |
-| Corpo maior que 64 KiB | 413 CORPO_MUITO_GRANDE |
-| Tipo de conteúdo diferente de application/json | 415 TIPO_DE_CONTEUDO_INVALIDO |
-| ID, campo obrigatório, tipo ou JSON inválido | 400 DADOS_INVALIDOS |
-| Falha inesperada | 500 ERRO_INTERNO |
+| E-mail não encontrado | HTTP 401 — CREDENCIAIS_INVALIDAS |
+| Senha incorreta | HTTP 401 — CREDENCIAIS_INVALIDAS |
+| JSON inválido ou exceção durante o processamento | HTTP 400 — REQUISICAO_INVALIDA |
 
-### Objeto Erro
+Se as credenciais administrativas não forem configuradas na inicialização, o Backend 1 não conclui normalmente sua inicialização. Essa situação não corresponde a uma resposta HTTP 503 do endpoint de login.
 
-| Campo | Tipo | Obrigatório | Exemplo |
-| --- | --- | --- | --- |
-| codigo | texto | sim | DADOS_INVALIDOS |
-| mensagem | texto | sim | Confira os campos informados. |
+## Objeto de erro
 
+Os erros retornam um objeto JSON com o campo `erro`.
+
+Exemplo:
+
+```json
+{
+  "erro": "CREDENCIAIS_INVALIDAS"
+}
+```
+
+## Persistência e segurança
+
+As credenciais são armazenadas na tabela `conta` do MySQL.
+
+Os tokens de sessão são mantidos em memória pelo Backend 1, não em uma tabela do banco.
+
+O acesso às rotas protegidas depende da validade da sessão ou da autorização interna, conforme as regras implementadas.
