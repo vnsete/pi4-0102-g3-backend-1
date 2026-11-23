@@ -1,3 +1,4 @@
+
 # CT18 consultarPagamentosPendentes
 
 | Linha | Valor |
@@ -11,56 +12,72 @@
 
 ## Entrada
 
-Não tem.
+Não possui parâmetros obrigatórios nem corpo de requisição.
 
 ## Saída
 
 Sucesso: HTTP 200.
 
-| Campo | Tipo | Obrigatório | Exemplo |
-| --- | --- | --- | --- |
-| pendencias | lista de objeto Pendencia | sim | ver objeto Pendencia |
+A API retorna diretamente um array JSON contendo somente pagamentos com situação `pendente`.
 
-### Objeto Pendencia
-
-| Campo | Tipo | Obrigatório | Exemplo |
-| --- | --- | --- | --- |
-| pagamentoId | inteiro | sim | 50 |
-| servicoId | inteiro | sim | 20 |
-| clienteId | inteiro | sim | 1 |
-| nomeCliente | texto | sim | Carlos Mendes |
-| descricao | texto | sim | Limpeza da piscina |
-| valor | decimal | sim | 150.00 |
-| situacao | um de: pendente, pago | sim | pendente |
-| atualizadoEm | data e hora | sim | 2026-10-13T09:05:00-03:00 |
+| Campo | Tipo | Descrição |
+| --- | --- | --- |
+| id | inteiro | Identificador do pagamento |
+| servico_id | inteiro | Identificador do serviço |
+| valor | decimal | Valor registrado |
+| situacao | texto | pendente |
+| data_pagamento | data ou nulo | Data registrada no pagamento |
+| descricao | texto | Descrição do serviço |
+| cliente | texto | Nome do cliente |
 
 ## Cabeçalhos de entrada
 
-| Campo | Tipo | Obrigatório | Exemplo |
-| --- | --- | --- | --- |
-| Cookie servihubSessao | texto | sim | 64 caracteres hexadecimais do token |
-| X-ServiHUB-Internal | texto | sim | segredo configurado nos backends |
+| Campo | Tipo | Obrigatório |
+| --- | --- | --- |
+| X-ServiHUB-Internal | texto | Sim, na comunicação realizada pelo Backend 2 |
+
+O Backend 2 envia a chave configurada em `INTERNAL_API_KEY`.
+
+O Backend 1 também aceita uma sessão válida pelo cookie `servihubSessao`, conforme sua regra geral de autenticação.
 
 ## Regras
 
-Interface interna. Junta pagamento, serviço e cliente; retorna somente pagamentos com situacao=pendente, por atualizadoEm decrescente e pagamentoId decrescente. Sem registros pendentes retorna lista vazia. situacao mantém a enumeração de CT15 e CT16, embora este filtro só devolva pendente. O Backend 1 valida a sessão encaminhada antes da leitura; sessão inválida retorna 401. Regras de sessão, cabeçalhos, origem, timeout e limites seguem a visão geral. O corpo JSON não contém o token de sessão. Resposta contém Content-Type: application/json e Cache-Control: no-store.
+O endpoint `GET /pendencias` consulta os pagamentos pendentes no Backend 1.
 
-Padrões de campos, datas, valores, rede e erros seguem docs/fluxos/visao-geral.md no Frontend. Campo recebido fora do contrato é rejeitado com 400 DADOS_INVALIDOS.
+A consulta associa as tabelas `pagamento`, `servico` e `cliente`.
+
+São retornados somente os pagamentos cuja coluna `situacao` seja igual a `pendente`.
+
+O resultado inclui os campos da tabela `pagamento`, além da descrição do serviço e do nome do cliente.
+
+Não há ordenação explícita na consulta SQL.
+
+Quando não existem pagamentos pendentes, retorna um array JSON vazio.
+
+O Backend 2 utiliza esse endpoint após validar a sessão do usuário por meio de `GET /sessao`.
+
+Na chamada interna, o Backend 2 utiliza o cabeçalho `X-ServiHUB-Internal`, com a chave compartilhada entre os backends.
+
+O Backend 1 autoriza o acesso quando a sessão é válida ou quando a chave interna corresponde à configuração do servidor.
+
+A resposta utiliza Content-Type `application/json; charset=utf-8`.
 
 ## Erros
 
 | Quando | O que volta |
 | --- | --- |
-| Cookie ausente, sessão expirada ou invalidada | 401 SESSAO_INVALIDA |
-| Segredo interno ausente ou inválido | 403 CHAMADA_INTERNA_NAO_AUTORIZADA |
-| ID, campo obrigatório, tipo ou JSON inválido | 400 DADOS_INVALIDOS |
-| Banco indisponível ou transação falha | 503 BANCO_INDISPONIVEL |
-| Falha inesperada | 500 ERRO_INTERNO |
+| Sessão inválida e ausência de autorização interna válida | HTTP 401 — SESSAO_INVALIDA |
+| Rota inexistente | HTTP 404 — ROTA_NAO_ENCONTRADA |
+| Exceção durante o processamento | HTTP 400 — REQUISICAO_INVALIDA |
 
-### Objeto Erro
+## Objeto de erro
 
-| Campo | Tipo | Obrigatório | Exemplo |
-| --- | --- | --- | --- |
-| codigo | texto | sim | DADOS_INVALIDOS |
-| mensagem | texto | sim | Confira os campos informados. |
+Os erros retornam um objeto JSON com o campo `erro`.
 
+Exemplo:
+
+```json
+{
+  "erro": "SESSAO_INVALIDA"
+}
+```
