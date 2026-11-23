@@ -36,7 +36,9 @@ Sucesso: HTTP 201.
 
 ## Regras
 
-Cliente deve existir; serviço, se informado, deve existir e pertencer ao cliente. Descrição: 1 a 500 caracteres. valorTotal positivo, até duas casas decimais. Valor é informado pelo prestador; o MVP não calcula impostos nem emite documentos fiscais. Backend gera orcamentoId e criadoEm. Campos opcionais não preenchidos são omitidos; string vazia ou null enviados explicitamente são rejeitados. Os vínculos são verificados dentro da transação de gravação. O Frontend bloqueia o botão de envio até a resposta e não repete POST automaticamente. Se a conexão cair após enviar, a tela informa resultado não confirmado e consulta a lista antes de permitir outra gravação; não afirma que a operação falhou. Regras de sessão, cabeçalhos, origem, timeout e limites seguem a visão geral. O corpo JSON não contém o token de sessão. Resposta contém Content-Type: application/json e Cache-Control: no-store.
+
+O cliente informado em cliente_id deve existir. O item informado em catalogo_id deve estar cadastrado no catálogo. A descrição do orçamento é obtida automaticamente do catálogo. O campo valor é opcional; quando não informado, utiliza-se o valor cadastrado no catálogo. Valores negativos são rejeitados com HTTP 400 VALOR_INVALIDO. Após a criação, o Backend 1 retorna HTTP 201 com o identificador id do orçamento gerado.
+
 
 Padrões de campos, datas, valores, rede e erros seguem docs/fluxos/visao-geral.md no Frontend. Campo recebido fora do contrato é rejeitado com 400 DADOS_INVALIDOS.
 
