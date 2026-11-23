@@ -1,3 +1,4 @@
+
 # CT27 encerrarSessao
 
 | Linha | Valor |
@@ -11,7 +12,9 @@
 
 ## Entrada
 
-Não tem.
+Não possui parâmetros obrigatórios nem corpo de requisição.
+
+O navegador pode enviar o cookie `servihubSessao`, caso exista uma sessão anterior.
 
 ## Saída
 
@@ -21,37 +24,86 @@ Sucesso: HTTP 200.
 | --- | --- | --- | --- |
 | autenticado | booleano | sim | false |
 
+Exemplo:
+
+```json
+{
+  "autenticado": false
+}
+```
+
 ## Cabeçalhos de entrada
 
-| Campo | Tipo | Obrigatório | Exemplo |
+| Campo | Tipo | Obrigatório | Descrição |
 | --- | --- | --- | --- |
-| Cookie servihubSessao | texto | não | 64 caracteres hexadecimais do token |
-| Origin | texto | sim | https://servihub.example.com |
+| Cookie | texto | Não | Permite identificar a sessão que será encerrada |
+
+Formato do cookie:
+
+`Cookie: servihubSessao=<token>`
 
 ## Cabeçalhos de saída
 
-| Campo | Tipo | Obrigatório | Exemplo |
-| --- | --- | --- | --- |
-| Set-Cookie | texto | sim | servihubSessao=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0 |
+| Campo | Tipo | Descrição |
+| --- | --- | --- |
+| Set-Cookie | texto | Invalida o cookie de autenticação |
+| Content-Type | texto | application/json; charset=utf-8 |
+
+Formato do cabeçalho de encerramento:
+
+`Set-Cookie: servihubSessao=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`
+
+O atributo `Secure` não é definido explicitamente na implementação atual.
 
 ## Regras
 
-Remove o token da memória, quando existir, e devolve cookie servihubSessao vazio com Max-Age=0. Operação idempotente: uma sessão já encerrada ou expirada também retorna HTTP 200. O JSON contém autenticado=false. O Frontend limpa dados das telas e volta ao login; o cookie só é removido pela resposta do servidor. Regras de sessão, cabeçalhos, origem, timeout e limites seguem a visão geral. O corpo JSON não contém o token de sessão. Resposta contém Content-Type: application/json e Cache-Control: no-store.
+O endpoint `DELETE /sessao` encerra a sessão do usuário no Backend 1.
 
-Padrões de campos, datas, valores, rede e erros seguem docs/fluxos/visao-geral.md no Frontend. Campo recebido fora do contrato é rejeitado com 400 DADOS_INVALIDOS.
+O Backend 1 extrai o token do cookie `servihubSessao`, quando ele estiver presente.
+
+Em seguida, remove o token do mapa de sessões mantido em memória.
+
+A remoção é realizada por meio da operação `sessions.remove(token)`.
+
+O servidor envia um novo cabeçalho `Set-Cookie` com o mesmo nome de cookie, valor vazio e `Max-Age=0`, solicitando sua exclusão pelo navegador.
+
+A resposta retorna HTTP 200 com `autenticado: false`.
+
+A operação também retorna HTTP 200 quando o token não existe, já expirou ou não foi enviado.
+
+Não é necessária uma sessão válida para executar `DELETE /sessao`.
+
+O endpoint não consulta nem altera registros no banco de dados.
+
+A resposta não contém o token da sessão.
+
+A resposta utiliza Content-Type `application/json; charset=utf-8`.
 
 ## Erros
 
 | Quando | O que volta |
 | --- | --- |
-| Origem ausente ou não autorizada | 403 ORIGEM_NAO_AUTORIZADA |
-| ID, campo obrigatório, tipo ou JSON inválido | 400 DADOS_INVALIDOS |
-| Falha inesperada | 500 ERRO_INTERNO |
+| Sessão inexistente, expirada ou já encerrada | HTTP 200 — autenticado: false |
+| Exceção durante o processamento | HTTP 400 — REQUISICAO_INVALIDA |
 
-### Objeto Erro
+A implementação atual não possui validação explícita do cabeçalho Origin nesse endpoint.
 
-| Campo | Tipo | Obrigatório | Exemplo |
-| --- | --- | --- | --- |
-| codigo | texto | sim | DADOS_INVALIDOS |
-| mensagem | texto | sim | Confira os campos informados. |
+## Objeto de erro
 
+Em caso de exceção, o Backend 1 utiliza um objeto JSON com o campo `erro`.
+
+Exemplo:
+
+```json
+{
+  "erro": "REQUISICAO_INVALIDA"
+}
+```
+
+## Persistência e segurança
+
+As sessões são mantidas em memória no Backend 1.
+
+O encerramento remove o token desse armazenamento e invalida o cookie enviado ao navegador.
+
+Não há alteração nas tabelas do MySQL.
