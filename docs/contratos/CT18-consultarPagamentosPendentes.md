@@ -7,7 +7,7 @@
 | Quem chama | Backend 2 |
 | Quem responde | Backend 1 |
 | Atende | E10 |
-| Como chamar | GET /interno/pagamentos-pendentes |
+| Como chamar | GET /pendencias |
 
 ## Entrada
 
