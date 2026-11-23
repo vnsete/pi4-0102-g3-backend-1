@@ -1,37 +1,60 @@
+
 # CT19 cliente
 
 | Linha | Valor |
 | --- | --- |
 | ID e nome | CT19 cliente |
-| Fronteira | Banco |
+| Fronteira | Banco de dados |
 | Quem chama | Backend 1 |
-| Quem responde | Banco |
+| Quem responde | MySQL 9.2 |
 | Atende | E1, E2, E3, E4, E6, E7, E8, E10 |
-| Como chamar | Tabela cliente; chave id; conexão MySQL |
+| Como chamar | Tabela cliente, via JDBC |
 
-## Entrada e saída
+## Estrutura da tabela
 
-Os campos gravados são os mesmos campos lidos.
-
-| Campo | Tipo | Obrigatório | Exemplo |
+| Campo | Tipo SQL | Restrição | Descrição |
 | --- | --- | --- | --- |
-| id | inteiro | sim | 1 |
-| nome | texto | sim | Carlos Mendes |
-| telefone | texto | sim | 13996937266 |
-| email | texto | não | carlos@example.com |
-| criado_em | data e hora | sim | 2026-10-13T09:00:00-03:00 |
+| id | BIGINT | PRIMARY KEY, AUTO_INCREMENT | Identificador do cliente |
+| nome | VARCHAR(160) | NOT NULL | Nome do cliente |
+| telefone | VARCHAR(40) | NOT NULL | Telefone do cliente |
+| email | VARCHAR(255) | NULL permitido | E-mail opcional |
+| criado_em | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | Data e hora do cadastro |
 
 ## Regras
 
-PK id INT AUTO_INCREMENT. nome VARCHAR(120), telefone VARCHAR(15), email VARCHAR(254) opcional, criado_em DATETIME(6) UTC. Campos obrigatórios são NOT NULL. Nome não é único. Usada para inserir/listar clientes e verificar vínculos; não há exclusão no MVP. As tabelas usam mecanismo transacional InnoDB, charset utf8mb4 e conexão com timezone UTC. Consultas usam parâmetros vinculados, sem concatenar valores vindos da tela. Restrições e índices são criados por scripts SQL versionados junto do Backend 1.
+A tabela `cliente` armazena os dados básicos dos clientes cadastrados no ServiHUB.
 
-Os campos da entrada e da saída descrevem os registros persistidos/lidos. Em inserções, id e datas geradas são preenchidos pelo banco ou pelo Backend 1; em consultas, o Backend 1 informa filtros e lê somente as colunas necessárias. Colunas obrigatórias são NOT NULL; opcionais aceitam NULL. A conversão entre campos HTTP e colunas segue a visão geral.
+O campo `id` é gerado automaticamente pelo banco de dados e identifica cada registro de forma única.
 
-## Erros
+Os campos `nome` e `telefone` são obrigatórios. O campo `email` é opcional.
 
-| Quando | O que volta |
+O Backend 1 valida que nome e telefone não estejam vazios e exige que o telefone contenha 10 ou 11 dígitos numéricos, incluindo o DDD.
+
+O campo `criado_em` é preenchido automaticamente pelo MySQL quando o registro é criado.
+
+A tabela é criada pelo script `db/schema.sql` do repositório principal.
+
+O cadastro utiliza `POST /clientes`, retornando HTTP 201 com o identificador `id` criado.
+
+A consulta utiliza `GET /clientes`, retornando os campos `id`, `nome`, `telefone`, `email` e `criado_em`, ordenados pelo nome.
+
+A tabela `cliente` é referenciada por chaves estrangeiras em `endereco`, `servico` e `orcamento`.
+
+Um cliente pode possuir múltiplos endereços, serviços e orçamentos (relacionamentos 1:N).
+
+Não há restrição UNIQUE para nome, telefone ou e-mail nessa tabela.
+
+## Erros e validações
+
+| Situação | Comportamento |
 | --- | --- |
-| FK inexistente ou referência incompatível | Banco recusa; Backend 1 retorna o erro de vínculo ou não encontrado do contrato HTTP. |
-| Valor, nulidade, enumeração ou unicidade viola a regra da tabela | Banco recusa; Backend 1 retorna 400 ou 409 conforme o contrato HTTP. |
-| Conexão ou transação falha | Rollback; Backend 1 retorna 503 BANCO_INDISPONIVEL. |
+| Nome ou telefone vazio | HTTP 400 — DADOS_OBRIGATORIOS |
+| Telefone fora do padrão de 10 ou 11 dígitos | HTTP 400 — mensagem de telefone inválido |
+| Falha de persistência ou exceção | HTTP 400 — REQUISICAO_INVALIDA, conforme tratamento geral atual |
+| Referência a cliente inexistente no cadastro de endereço ou orçamento | HTTP 404 — CLIENTE_NAO_ENCONTRADO |
 
+## Persistência
+
+Os dados são armazenados no banco relacional MySQL, utilizando JDBC no Backend 1.
+
+A definição da tabela está no arquivo `db/schema.sql` do repositório principal.
