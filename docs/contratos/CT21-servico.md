@@ -1,40 +1,86 @@
+
 # CT21 servico
 
 | Linha | Valor |
 | --- | --- |
 | ID e nome | CT21 servico |
-| Fronteira | Banco |
+| Fronteira | Banco de dados |
 | Quem chama | Backend 1 |
-| Quem responde | Banco |
+| Quem responde | MySQL 9.2 |
 | Atende | E3, E4, E5, E6, E7, E8, E9, E10 |
-| Como chamar | Tabela servico; chave id; conexão MySQL |
+| Como chamar | Tabela servico, via JDBC |
 
-## Entrada e saída
+## Estrutura da tabela
 
-Os campos gravados são os mesmos campos lidos.
-
-| Campo | Tipo | Obrigatório | Exemplo |
+| Campo | Tipo SQL | Restrição | Descrição |
 | --- | --- | --- | --- |
-| id | inteiro | sim | 20 |
-| cliente_id | inteiro | sim | 1 |
-| endereco_id | inteiro | não | 10 |
-| descricao | texto | sim | Limpeza da piscina |
-| valor_previsto | decimal | não | 150.00 |
-| status | um de: registrado, agendado, em_andamento, concluido, cancelado | sim | registrado |
-| criado_em | data e hora | sim | 2026-10-13T09:02:00-03:00 |
-| atualizado_em | data e hora | sim | 2026-10-13T09:02:00-03:00 |
+| id | BIGINT | PRIMARY KEY, AUTO_INCREMENT | Identificador do serviço |
+| cliente_id | BIGINT | NOT NULL, FOREIGN KEY | Cliente vinculado |
+| endereco_id | BIGINT | NULL, FOREIGN KEY | Endereço opcional |
+| descricao | TEXT | NOT NULL | Descrição do serviço |
+| valor_previsto | DECIMAL(12,2) | NULL permitido | Valor previsto |
+| status | VARCHAR(30) | NOT NULL, DEFAULT 'registrado' | Situação do serviço |
+| criado_em | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | Data do registro |
+| duracao_minutos | INT | NOT NULL, DEFAULT 60 | Duração em minutos |
+| data_atendimento | DATE | NULL permitido | Data prevista do atendimento |
 
 ## Regras
 
-PK id INT AUTO_INCREMENT. FKs cliente_id e endereco_id (opcional), com RESTRICT. descricao VARCHAR(500); valor_previsto DECIMAL(12,2) opcional e positivo; status ENUM conforme tabela; datas DATETIME(6) UTC. Validação do endereço pertencer ao cliente ocorre no Backend 1. Inserir, consultar e alterar status conforme CT8; atualização não modifica criado_em. Alterações de status usam bloqueio de linha e validam CT8 sobre o registro atual. As tabelas usam mecanismo transacional InnoDB, charset utf8mb4 e conexão com timezone UTC. Consultas usam parâmetros vinculados, sem concatenar valores vindos da tela. Restrições e índices são criados por scripts SQL versionados junto do Backend 1. A FK composta (endereco_id, cliente_id) referencia endereco(id, cliente_id); o par (id, cliente_id) do serviço é único.
+A tabela `servico` armazena os atendimentos registrados no ServiHUB.
 
-Os campos da entrada e da saída descrevem os registros persistidos/lidos. Em inserções, id e datas geradas são preenchidos pelo banco ou pelo Backend 1; em consultas, o Backend 1 informa filtros e lê somente as colunas necessárias. Colunas obrigatórias são NOT NULL; opcionais aceitam NULL. A conversão entre campos HTTP e colunas segue a visão geral.
+O campo `id` é gerado automaticamente pelo MySQL.
 
-## Erros
+O campo `cliente_id` referencia `cliente.id` e é obrigatório. O campo `endereco_id` referencia `endereco.id` e é opcional.
 
-| Quando | O que volta |
+Um cliente pode possuir vários serviços (1:N). Um endereço também pode estar vinculado a vários serviços.
+
+O Backend 1 verifica se o cliente existe e, quando informado um endereço, se ele pertence ao cliente selecionado.
+
+A descrição é obrigatória.
+
+O campo `status` é armazenado como VARCHAR(30), não como ENUM do MySQL.
+
+Os estados utilizados pela aplicação são: `registrado`, `agendado`, `em_andamento`, `concluido` e `cancelado`.
+
+As transições permitidas são:
+- registrado → agendado ou cancelado;
+- agendado → em_andamento ou cancelado;
+- em_andamento → concluido ou cancelado;
+- concluido e cancelado → sem novas transições.
+
+O campo `duracao_minutos` possui valor padrão de 60 minutos e deve ser maior que zero nas operações de cadastro.
+
+O campo `data_atendimento` permite registrar a data prevista. No cadastro, o Backend 1 não permite uma data anterior à data atual.
+
+Quando `data_atendimento` é informada no cadastro, o serviço recebe status `agendado`. Caso contrário, recebe status `registrado`.
+
+A tabela é criada pelo script `db/schema.sql`, e as colunas `duracao_minutos` e `data_atendimento` são acrescentadas pelo método `Main.migrate()` do Backend 1.
+
+O cadastro utiliza `POST /servicos`, retornando HTTP 201 com o campo `id`.
+
+A consulta utiliza `GET /servicos`, retornando os registros associados aos clientes e ordenados por ID decrescente.
+
+A alteração de status utiliza `PUT /servicos/{id}/status`.
+
+O histórico por cliente utiliza `GET /clientes/{id}/historico`.
+
+## Erros e validações
+
+| Situação | Comportamento |
 | --- | --- |
-| FK inexistente ou referência incompatível | Banco recusa; Backend 1 retorna o erro de vínculo ou não encontrado do contrato HTTP. |
-| Valor, nulidade, enumeração ou unicidade viola a regra da tabela | Banco recusa; Backend 1 retorna 400 ou 409 conforme o contrato HTTP. |
-| Conexão ou transação falha | Rollback; Backend 1 retorna 503 BANCO_INDISPONIVEL. |
+| Cliente inexistente no cadastro | HTTP 404 — CLIENTE_NAO_ENCONTRADO |
+| Endereço não vinculado ao cliente | HTTP 409 — ENDERECO_DE_OUTRO_CLIENTE |
+| Descrição vazia | HTTP 400 — DESCRICAO_OBRIGATORIA |
+| Duração igual ou inferior a zero | HTTP 400 — DURACAO_INVALIDA |
+| Data de atendimento anterior à atual | HTTP 400 — Não é permitido selecionar uma data passada |
+| Serviço inexistente ao alterar status | HTTP 404 — SERVICO_NAO_ENCONTRADO |
+| Transição de status não permitida | HTTP 409 — TRANSICAO_INVALIDA |
+| Exceção durante o processamento | HTTP 400 — REQUISICAO_INVALIDA, conforme tratamento geral atual |
 
+## Persistência
+
+Os dados são armazenados no MySQL e acessados pelo Backend 1 por meio de JDBC.
+
+As definições da tabela e suas colunas estão em `db/schema.sql` e no método `Main.migrate()`.
+
+A tabela possui chaves estrangeiras individuais para `cliente_id` e `endereco_id`. A verificação de que o endereço pertence ao cliente é realizada pelo Backend 1.
