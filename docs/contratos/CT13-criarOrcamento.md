@@ -24,12 +24,7 @@ Sucesso: HTTP 201.
 
 | Campo | Tipo | Obrigatório | Exemplo |
 | --- | --- | --- | --- |
-| orcamentoId | inteiro | sim | 40 |
-| clienteId | inteiro | sim | 1 |
-| servicoId | inteiro | não | 20 |
-| descricao | texto | sim | Limpeza da piscina e materiais |
-| valorTotal | decimal | sim | 150.00 |
-| criadoEm | data e hora | sim | 2026-10-13T09:04:00-03:00 |
+| id | inteiro | sim | 40 |
 
 ## Cabeçalhos de entrada
 
